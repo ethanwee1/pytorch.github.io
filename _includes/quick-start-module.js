@@ -30,6 +30,18 @@ var supportedCloudPlatforms = [
   'lightning-studios',
 ];
 
+// pytorch.org keeps its own copy of the chooser markup, which may lack the
+// ROCm alpha box; clone it from the ROCm box.
+if (!document.getElementById("rocm.alpha")) {
+  var rocmBox = document.getElementById("rocm5.x");
+  if (rocmBox) {
+    var alphaBox = rocmBox.cloneNode(true);
+    alphaBox.id = "rocm.alpha";
+    alphaBox.style.display = "none";
+    rocmBox.after(alphaBox);
+  }
+}
+
 var os = $(".os > .option");
 var package = $(".package > .option");
 var language = $(".language > .option");
@@ -141,41 +153,52 @@ function changeVersion(ptbuild) {
   for (const [arch_key, info] of archInfoMap) {
     var elems = document.querySelectorAll('[id^="'+arch_key+'"]');
     for (var i=0; i < elems.length;i++) {
-      if(archMap[elems[i].id]) {
+      var arch = archMap[elems[i].id];
+      if(arch) {
         elems[i].style.display = "";
         elems[i].style.textDecoration = "";
-        elems[i].children[0].textContent = info.title + " " + archMap[elems[i].id][1]
-      } else if (arch_key == "cuda") {
-        // The channel ships fewer CUDA versions than there are boxes.
+        elems[i].children[0].textContent = [info.title].concat(arch.slice(1)).join(" ");
+      } else if (arch_key == "cuda" || elems[i].id == "rocm.alpha") {
+        // The channel ships fewer versions than there are boxes.
         elems[i].style.display = "none";
       } else {
         elems[i].style.textDecoration = "line-through";
       }
     }
   }
-  layoutCudaOptions();
+  layoutComputeOptions();
   var stable_element = document.getElementById("stable");
   stable_element.children[0].textContent = stable_version;
 }
 
-// The CUDA boxes share 6 of the row's 12 columns; widen them when some are
-// hidden, and move the selection off a hidden box.
-function layoutCudaOptions() {
-  var elems = Array.from(document.querySelectorAll('[id^="cuda"]'));
+// Split the row's 12 columns across the visible boxes, giving leftover
+// columns to the ROCm boxes (longest labels) and then CPU, and move the
+// selection off a hidden box.
+function layoutComputeOptions() {
+  var elems = Array.from(cuda);
   var visible = elems.filter(function(e) { return e.style.display != "none"; });
   if (visible.length == 0) {
     return;
   }
-  var width = "col-md-" + Math.floor(6 / visible.length);
+  var base = Math.floor(12 / visible.length);
+  var extra = 12 - base * visible.length;
+  var widened = visible.filter(function(e) { return e.id.indexOf("rocm") == 0; })
+    .concat(visible.filter(function(e) { return e.id == "accnone"; }))
+    .slice(0, extra);
   for (var i = 0; i < elems.length; i++) {
-    elems[i].classList.remove("col-md-2", "col-md-3", "col-md-6");
-    elems[i].classList.add(width);
+    elems[i].className = elems[i].className.replace(/\bcol-md-\d+\b/g, "").trim();
+    var width = base + (widened.indexOf(elems[i]) >= 0 ? 1 : 0);
+    elems[i].classList.add("col-md-" + width);
   }
   var selected = document.getElementById(opts.cuda);
   if (selected && selected.style.display == "none") {
+    var fallback = opts.cuda == "rocm.alpha" ? document.getElementById("rocm5.x") : null;
+    if (!fallback || fallback.style.display == "none") {
+      fallback = visible[0];
+    }
     $(cuda).removeClass("selected");
-    $(visible[0]).addClass("selected");
-    opts.cuda = visible[0].id;
+    $(fallback).addClass("selected");
+    opts.cuda = fallback.id;
   }
 }
 
